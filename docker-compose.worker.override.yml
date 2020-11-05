@@ -1,0 +1,56 @@
+version: '2.1'
+
+x-disabled-service:
+  &disabled-service
+  image: tianon/true
+  restart: "no"
+  command: ""
+  entrypoint: ""
+
+networks:
+  monitor-net:
+    driver: bridge
+
+volumes:
+  dag_data: {}
+  postgres_data: {}
+  prometheus_data: {}
+  grafana_data: {}
+
+services:
+  redis:
+    <<: *disabled-service
+  
+  postgres:
+    <<: *disabled-service
+  
+  webserver:
+    <<: *disabled-service
+  
+  flower:
+    <<: *disabled-service
+  
+  scheduler:
+    <<: *disabled-service
+  
+  worker:
+    environment:
+      - POSTGRES_HOST=${POSTGRES_HOST}
+    
+  prometheus:
+    <<: *disabled-service
+  
+  alertmanager:
+    <<: *disabled-service
+  
+  cadvisor:
+    <<: *disabled-service
+  
+  grafana:
+    <<: *disabled-service
+  
+  pushgateway:
+    <<: *disabled-service
+  
+  caddy:
+    <<: *disabled-service

@@ -1,0 +1,246 @@
+version: '2.1'
+
+networks:
+  monitor-net:
+    driver: bridge
+
+volumes:
+  dag_data: {}
+  postgres_data: {}
+  prometheus_data: {}
+  grafana_data: {}
+  
+services:
+  nginx:
+    image: nginx:latest
+    container_name: airflow_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx:/etc/nginx/conf.d
+    depends_on:
+      - webserver
+
+  git-sync:
+    image: openweb/git-sync:0.0.1
+    environment:
+      GIT_SYNC_REPO: ${DAGS_REPO:-airflow}
+      GIT_SYNC_DEST: "/git"
+      GIT_SYNC_BRANCH: ${DAGS_REPO_BRANCH:-master}
+      GIT_SYNC_REV: "FETCH_HEAD"
+      GIT_SYNC_WAIT: "10"
+    volumes:
+      - ./dags:/git
+    restart: always
+
+  
+  redis:
+    image: 'redis:5.0.5'
+    command: redis-server --requirepass redispass
+  
+  postgres:
+    image: postgres:9.6
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-airflow}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-airflow}
+      - POSTGRES_DB=${POSTGRES_DB:-airflow}
+      - PGDATA=${PGDATA:-/var/lib/postgresql/data/pgdata}
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data/pgdata
+  
+  webserver:
+    image: puckel/docker-airflow:1.10.9
+    restart: always
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - EXECUTOR=Celery
+      - LOAD_EX=${LOAD_EX:-n}
+      - FERNET_KEY=${FERNET_KEY:-46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=}
+      - POSTGRES_USER=${POSTGRES_USER:-airflow}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-airflow}
+      - POSTGRES_DB=${POSTGRES_DB:-airflow}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redispass}
+    volumes:
+      - ./dags:/usr/local/airflow/dags
+      - ./plugins:/usr/local/airflow/plugins
+      - ./requirements.txt:/requirements.txt
+    ports:
+      - "8080:8080"
+    command: webserver
+    healthcheck:
+      test: ["CMD-SHELL", "[ -f /usr/local/airflow/airflow-webserver.pid ]"]
+      interval: 30s
+      timeout: 30s
+      retries: 3
+  
+  flower:
+    image: puckel/docker-airflow:1.10.9
+    restart: always
+    depends_on:
+      - redis
+    environment:
+      - EXECUTOR=Celery
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redispass}
+    ports:
+      - "5555:5555"
+    command: flower
+  
+  scheduler:
+    image: puckel/docker-airflow:1.10.9
+    restart: always
+    depends_on:
+      - webserver
+    volumes:
+      - ./dags:/usr/local/airflow/dags
+      - ./plugins:/usr/local/airflow/plugins
+    environment:
+      - EXECUTOR=Celery
+      - LOAD_EX=${LOAD_EX:-n}
+      - FERNET_KEY=${FERNET_KEY:-46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=}
+      - POSTGRES_USER=${POSTGRES_USER:-airflow}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-airflow}
+      - POSTGRES_DB=${POSTGRES_DB:-airflow}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redispass}
+    command: scheduler
+  
+  worker:
+    image: puckel/docker-airflow:1.10.9
+    restart: always
+    depends_on:
+      - scheduler
+    volumes:
+      - ./dags:/usr/local/airflow/dags
+      - ./plugins:/usr/local/airflow/plugins
+    environment:
+      - EXECUTOR=Celery
+      - FERNET_KEY=${FERNET_KEY:-46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=}
+      - POSTGRES_USER=${POSTGRES_USER:-airflow}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-airflow}
+      - POSTGRES_DB=${POSTGRES_DB:-airflow}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redispass}
+    command: worker
+  
+#  prometheus:
+#    image: prom/prometheus:v2.22.0
+#    container_name: prometheus
+#    volumes:
+#      - ./prometheus:/etc/prometheus
+#      - prometheus_data:/prometheus
+#    command:
+#      - '--config.file=/etc/prometheus/prometheus.yml'
+#      - '--storage.tsdb.path=/prometheus'
+#      - '--web.console.libraries=/etc/prometheus/console_libraries'
+#      - '--web.console.templates=/etc/prometheus/consoles'
+#      - '--storage.tsdb.retention.time=200h'
+#      - '--web.enable-lifecycle'
+#    restart: unless-stopped
+#    expose:
+#      - 9090
+#    networks:
+#      - monitor-net
+#    labels:
+#      org.label-schema.group: "monitoring"
+#
+#  alertmanager:
+#    image: prom/alertmanager:v0.21.0
+#    container_name: alertmanager
+#    volumes:
+#      - ./alertmanager:/etc/alertmanager
+#    command:
+#      - '--config.file=/etc/alertmanager/config.yml'
+#      - '--storage.path=/alertmanager'
+#    restart: unless-stopped
+#    expose:
+#      - 9093
+#    networks:
+#      - monitor-net
+#    labels:
+#      org.label-schema.group: "monitoring"
+#
+#  nodeexporter:
+#    image: prom/node-exporter:v1.0.1
+#    container_name: nodeexporter
+#    volumes:
+#      - /proc:/host/proc:ro
+#      - /sys:/host/sys:ro
+#      - /:/rootfs:ro
+#    command:
+#      - '--path.procfs=/host/proc'
+#      - '--path.rootfs=/rootfs'
+#      - '--path.sysfs=/host/sys'
+#      - '--collector.filesystem.ignored-mount-points=^/(sys|proc|dev|host|etc)($$|/)'
+#    restart: unless-stopped
+#    expose:
+#      - 9100
+#    networks:
+#      - monitor-net
+#    labels:
+#      org.label-schema.group: "monitoring"
+#
+#  cadvisor:
+#    image: gcr.io/cadvisor/cadvisor:v0.37.0
+#    container_name: cadvisor
+#    volumes:
+#      - /:/rootfs:ro
+#      - /var/run:/var/run:rw
+#      - /sys:/sys:ro
+#      - /var/lib/docker:/var/lib/docker:ro
+#      #- /cgroup:/cgroup:ro #doesn't work on MacOS only for Linux
+#    restart: unless-stopped
+#    expose:
+#      - 8080
+#    networks:
+#      - monitor-net
+#    labels:
+#      org.label-schema.group: "monitoring"
+#
+#  grafana:
+#    image: grafana/grafana:7.2.2
+#    container_name: grafana
+#    volumes:
+#      - grafana_data:/var/lib/grafana
+#      - ./grafana/provisioning:/etc/grafana/provisioning
+#    environment:
+#      - GF_SECURITY_ADMIN_USER=${ADMIN_USER:-admin}
+#      - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+#      - GF_USERS_ALLOW_SIGN_UP=false
+#    restart: unless-stopped
+#    expose:
+#      - 3000
+#    networks:
+#      - monitor-net
+#    labels:
+#      org.label-schema.group: "monitoring"
+#
+#  pushgateway:
+#    image: prom/pushgateway:v1.3.0
+#    container_name: pushgateway
+#    restart: unless-stopped
+#    expose:
+#      - 9091
+#    networks:
+#      - monitor-net
+#    labels:
+#      org.label-schema.group: "monitoring"
+#
+#  caddy:
+#    image: stefanprodan/caddy
+#    container_name: caddy
+#    ports:
+#      - "3000:3000"
+#      - "9090:9090"
+#      - "9093:9093"
+#      - "9091:9091"
+#    volumes:
+#      - ./caddy:/etc/caddy
+#    environment:
+#      - ADMIN_USER=${ADMIN_USER:-admin}
+#      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+#    restart: unless-stopped
+#    networks:
+#      - monitor-net
+#    labels:
+#      org.label-schema.group: "monitoring"
+      

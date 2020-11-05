@@ -1,0 +1,6 @@
+airflow-prometheus-exporter
+apache-airflow[gcp,aws]==1.10.10
+icon-etl>=0.1.0
+google-cloud-bigquery
+psycopg2-binary
+SQLAlchemy
