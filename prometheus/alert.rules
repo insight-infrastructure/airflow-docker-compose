@@ -1,70 +1,127 @@
+
 groups:
-- name: targets
-  rules:
-  - alert: monitor_service_down
-    expr: up == 0
-    for: 30s
-    labels:
-      severity: critical
-    annotations:
-      summary: "Monitor service non-operational"
-      description: "Service {{ $labels.instance }} is down."
+  - name: targets
+    rules:
+      - alert: monitor_service_down
+        expr: up == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Monitor service non-operational"
+          description: "Service {{ $labels.instance }} is down."
+  
+  - name: host
+    rules:
+      - alert: high_cpu_load
+        expr: node_load1 > 1.5
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Server under high load"
+          description: "Docker host is under high load, the avg load 1m is at {{ $value}}. Reported by instance {{ $labels.instance }} of job {{ $labels.job }}."
+    
+      - alert: high_memory_load
+        expr: (sum(node_memory_MemTotal_bytes) - sum(node_memory_MemFree_bytes + node_memory_Buffers_bytes + node_memory_Cached_bytes) ) / sum(node_memory_MemTotal_bytes) * 100 > 85
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Server memory is almost full"
+          description: "Docker host memory usage is {{ humanize $value}}%. Reported by instance {{ $labels.instance }} of job {{ $labels.job }}."
+    
+      - alert: high_storage_load
+        expr: (node_filesystem_size_bytes{fstype="aufs"} - node_filesystem_free_bytes{fstype="aufs"}) / node_filesystem_size_bytes{fstype="aufs"}  * 100 > 85
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Server storage is almost full"
+          description: "Docker host storage usage is {{ humanize $value}}%. Reported by instance {{ $labels.instance }} of job {{ $labels.job }}."
 
-- name: host
-  rules:
-  - alert: high_cpu_load
-    expr: node_load1 > 1.5
-    for: 30s
-    labels:
-      severity: warning
-    annotations:
-      summary: "Server under high load"
-      description: "Docker host is under high load, the avg load 1m is at {{ $value}}. Reported by instance {{ $labels.instance }} of job {{ $labels.job }}."
+  - name: containers
+    rules:
+      - alert: airflow_webserver_down
+        expr: absent(container_memory_usage_bytes{name="webserver"})
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Airflow webserver down"
+          description: "Airflow webserver container is down for more than 30 seconds."
 
-  - alert: high_memory_load
-    expr: (sum(node_memory_MemTotal_bytes) - sum(node_memory_MemFree_bytes + node_memory_Buffers_bytes + node_memory_Cached_bytes) ) / sum(node_memory_MemTotal_bytes) * 100 > 85
-    for: 30s
-    labels:
-      severity: warning
-    annotations:
-      summary: "Server memory is almost full"
-      description: "Docker host memory usage is {{ humanize $value}}%. Reported by instance {{ $labels.instance }} of job {{ $labels.job }}."
+      - alert: airflow_webserver_high_cpu
+        expr: sum(rate(container_cpu_usage_seconds_total{name="webserver"}[1m])) / count(node_cpu_seconds_total{mode="system"}) * 100 > 10
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Airflow webserver high CPU usage"
+          description: "Airflow webserver CPU usage is {{ humanize $value}}%."
 
-  - alert: high_storage_load
-    expr: (node_filesystem_size_bytes{fstype="aufs"} - node_filesystem_free_bytes{fstype="aufs"}) / node_filesystem_size_bytes{fstype="aufs"}  * 100 > 85
-    for: 30s
-    labels:
-      severity: warning
-    annotations:
-      summary: "Server storage is almost full"
-      description: "Docker host storage usage is {{ humanize $value}}%. Reported by instance {{ $labels.instance }} of job {{ $labels.job }}."
+      - alert: airflow_webserver_high_memory
+        expr: sum(container_memory_usage_bytes{name="webserver"}) > 1200000000
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Airflow webserver high memory usage"
+          description: "Airflow webserver memory consumption is at {{ humanize $value}}."
 
-- name: containers
-  rules:
-  - alert: airflow_down
-    expr: absent(container_memory_usage_bytes{name="airflow"})
-    for: 30s
-    labels:
-      severity: critical
-    annotations:
-      summary: "Airflow down"
-      description: "Airflow container is down for more than 30 seconds."
+      - alert: airflow_scheduler_down
+        expr: absent(container_memory_usage_bytes{name="scheduler"})
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Airflow scheduler down"
+          description: "Airflow scheduler container is down for more than 30 seconds."
 
-  - alert: airflow_high_cpu
-    expr: sum(rate(container_cpu_usage_seconds_total{name="airflow"}[1m])) / count(node_cpu_seconds_total{mode="system"}) * 100 > 10
-    for: 30s
-    labels:
-      severity: warning
-    annotations:
-      summary: "Airflow high CPU usage"
-      description: "Airflow CPU usage is {{ humanize $value}}%."
+      - alert: airflow_scheduler_high_cpu
+        expr: sum(rate(container_cpu_usage_seconds_total{name="scheduler"}[1m])) / count(node_cpu_seconds_total{mode="system"}) * 100 > 10
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Airflow scheduler high CPU usage"
+          description: "Airflow scheduler CPU usage is {{ humanize $value}}%."
 
-  - alert: airflow_high_memory
-    expr: sum(container_memory_usage_bytes{name="airflow"}) > 1200000000
-    for: 30s
-    labels:
-      severity: warning
-    annotations:
-      summary: "Airflow high memory usage"
-      description: "Airflow memory consumption is at {{ humanize $value}}."
+      - alert: airflow_scheduler_high_memory
+        expr: sum(container_memory_usage_bytes{name="scheduler"}) > 1200000000
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Airflow scheduler high memory usage"
+          description: "Airflow scheduler memory consumption is at {{ humanize $value}}."
 
+      - alert: airflow_scheduler_down
+        expr: absent(container_memory_usage_bytes{name="scheduler"})
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Airflow scheduler down"
+          description: "Airflow scheduler container is down for more than 30 seconds."
+
+      - alert: airflow_scheduler_high_cpu
+        expr: sum(rate(container_cpu_usage_seconds_total{name="scheduler"}[1m])) / count(node_cpu_seconds_total{mode="system"}) * 100 > 10
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Airflow scheduler high CPU usage"
+          description: "Airflow scheduler CPU usage is {{ humanize $value}}%."
+
+      - alert: airflow_scheduler_high_memory
+        expr: sum(container_memory_usage_bytes{name="scheduler"}) > 1200000000
+        for: 30s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Airflow scheduler high memory usage"
+          description: "Airflow scheduler memory consumption is at {{ humanize $value}}."
+
+
+          
